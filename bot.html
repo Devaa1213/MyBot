@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Agent Interface</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script> <!-- For Markdown Parsing -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color-light: #f3f4f6;
+            --bg-color-dark: #111827;
+            --container-bg-light: rgba(255, 255, 255, 0.7);
+            --container-bg-dark: rgba(31, 41, 55, 0.7);
+            --header-bg-light: #1f2937;
+            --header-bg-dark: #111827;
+            --text-color-light: #1f2937;
+            --text-color-dark: #f3f4f6;
+            --agent-bubble-bg-light: #ffffff;
+            --agent-bubble-bg-dark: #374151;
+            --border-color-light: #e5e7eb;
+            --border-color-dark: #4b5563;
+            --code-bg-light: #f3f4f6;
+            --code-bg-dark: #111827;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            transition: background-color 0.5s ease;
+        }
+
+        body.dark {
+            --bg-color-light: var(--bg-color-dark);
+            --container-bg-light: var(--container-bg-dark);
+            --header-bg-light: var(--header-bg-dark);
+            --text-color-light: var(--text-color-dark);
+            --agent-bubble-bg-light: var(--agent-bubble-bg-dark);
+            --border-color-light: var(--border-color-dark);
+            --code-bg-light: var(--code-bg-dark);
+        }
+
+        #vanta-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+
+        .chat-container-wrapper {
+            background-color: var(--container-bg-light);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: background-color 0.5s ease;
+        }
+        
+        #chat-container::-webkit-scrollbar { width: 6px; }
+        #chat-container::-webkit-scrollbar-track { background: transparent; }
+        #chat-container::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+        #chat-container::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+
+        .message-bubble {
+            max-width: 90%;
+            word-wrap: break-word;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+        .user-bubble {
+            background-image: linear-gradient(to right, #3b82f6, #60a5fa);
+        }
+        .agent-bubble {
+            background-color: var(--agent-bubble-bg-light);
+            color: var(--text-color-light);
+            border: 1px solid var(--border-color-light);
+            transition: background-color 0.5s ease, color 0.5s ease, border-color 0.5s ease;
+        }
+        /* Styling for markdown content */
+        .markdown-content p { margin-bottom: 0.5rem; }
+        .markdown-content ul, .markdown-content ol { margin-left: 1.5rem; margin-bottom: 0.5rem; }
+        .markdown-content li { margin-bottom: 0.25rem; }
+        .markdown-content pre {
+            background-color: var(--code-bg-light);
+            color: var(--text-color-light);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin: 0.5rem 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            position: relative;
+        }
+        .copy-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            background-color: #4b5563;
+            color: white;
+            border: none;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+        .copy-btn:hover { opacity: 1; }
+        .copy-btn:active { background-color: #6b7280; }
+
+
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .typing-indicator span { animation: pulse 1.4s infinite ease-in-out both; }
+        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+
+        @keyframes slideInUp {
+            from { opacity: 0; transform: translateY(20px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .slide-in-up { animation: slideInUp 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) both; }
+        
+        #send-button { transition: all 0.2s ease-in-out; }
+        #send-button:hover { transform: scale(1.1) rotate(10deg); box-shadow: 0 0 20px rgba(59, 130, 246, 0.6); }
+        #send-button:active { transform: scale(1) rotate(0deg); }
+
+        /* Dark mode toggle */
+        .theme-switch-wrapper { display: flex; align-items: center; }
+        .theme-switch { display: inline-block; height: 24px; position: relative; width: 44px; }
+        .theme-switch input { display:none; }
+        .slider { background-color: #4b5563; bottom: 0; cursor: pointer; left: 0; position: absolute; right: 0; top: 0; transition: .4s; }
+        .slider:before { background-color: #fff; bottom: 4px; content: ""; height: 16px; left: 4px; position: absolute; transition: .4s; width: 16px; }
+        input:checked + .slider { background-color: #3b82f6; }
+        input:checked + .slider:before { transform: translateX(20px); }
+        .slider.round { border-radius: 34px; }
+        .slider.round:before { border-radius: 50%; }
+
+    </style>
+</head>
+<body class="bg-gray-100" style="background-color: var(--bg-color-light);">
+    <canvas id="vanta-bg"></canvas>
+    <div class="flex items-center justify-center h-screen w-screen p-4">
+        <div class="chat-container-wrapper flex flex-col w-full max-w-2xl h-full md:h-[90vh] rounded-2xl shadow-2xl overflow-hidden">
+            <header class="bg-gray-800 text-white p-4 rounded-t-2xl flex items-center justify-between z-10 shadow-md" style="background-color: var(--header-bg-light); transition: background-color 0.5s ease;">
+                <div class="flex items-center">
+                    <div class="w-10 h-10 bg-gradient-to-tr from-blue-500 to-purple-600 rounded-full flex items-center justify-center mr-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 animate-spin" style="animation-duration: 3s;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M12 6a2 2 0 100-4 2 2 0 000 4zm0 14a2 2 0 100-4 2 2 0 000 4zm6-8a2 2 0 100-4 2 2 0 000 4zm-12 0a2 2 0 100-4 2 2 0 000 4z"/></svg>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold">My AI Agent</h1>
+                        <p class="text-sm text-gray-300 flex items-center"><span class="h-2 w-2 bg-green-400 rounded-full mr-2 animate-pulse"></span>Online</p>
+                    </div>
+                </div>
+                <div class="theme-switch-wrapper">
+                  <label class="theme-switch" for="checkbox">
+                    <input type="checkbox" id="checkbox" />
+                    <div class="slider round"></div>
+                  </label>
+                </div>
+            </header>
+
+            <main id="chat-container" class="flex-1 p-6 overflow-y-auto" style="background-color: transparent;">
+                <!-- Chat messages will be dynamically added by JS -->
+            </main>
+
+            <footer class="p-4 bg-transparent border-t" style="border-color: var(--border-color-light); transition: border-color 0.5s ease;">
+                <div class="flex items-center">
+                    <input type="text" id="chat-input" placeholder="Type your message or command..." class="flex-1 px-5 py-3 border rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 transition" style="background-color: var(--agent-bubble-bg-light); color: var(--text-color-light); border-color: var(--border-color-light);">
+                    <button id="send-button" class="ml-4 bg-blue-500 hover:bg-blue-600 text-white font-bold p-3 rounded-full shadow-lg">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                    </button>
+                </div>
+            </footer>
+        </div>
+    </div>
+
+    <script>
+        // --- 3D Background Setup ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('vanta-bg'), alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        const particlesGeometry = new THREE.BufferGeometry;
+        const particlesCnt = 5000;
+        const posArray = new Float32Array(particlesCnt * 3);
+        for(let i = 0; i < particlesCnt * 3; i++) { posArray[i] = (Math.random() - 0.5) * 5; }
+        particlesGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        const particlesMaterial = new THREE.PointsMaterial({ size: 0.005, color: 0xffffff });
+        const particlesMesh = new THREE.Points(particlesGeometry, particlesMaterial);
+        scene.add(particlesMesh);
+        camera.position.z = 2;
+        let mouseX = 0;
+        let mouseY = 0;
+        document.addEventListener('mousemove', (event) => { mouseX = event.clientX; mouseY = event.clientY; });
+        const clock = new THREE.Clock();
+        const animate = () => {
+            requestAnimationFrame(animate);
+            const elapsedTime = clock.getElapsedTime();
+            particlesMesh.rotation.y = -0.1 * elapsedTime;
+            particlesMesh.rotation.x = -0.1 * elapsedTime;
+            if (mouseX > 0) {
+                 particlesMesh.rotation.y += (mouseX - window.innerWidth / 2) * 0.00002;
+                 particlesMesh.rotation.x += (mouseY - window.innerHeight / 2) * 0.00002;
+            }
+            renderer.render(scene, camera);
+        };
+        animate();
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // --- Chat UI Logic ---
+        const chatContainer = document.getElementById('chat-container');
+        const chatInput = document.getElementById('chat-input');
+        const sendButton = document.getElementById('send-button');
+        const themeToggle = document.getElementById('checkbox');
+        
+        themeToggle.addEventListener('change', () => { document.body.classList.toggle('dark'); });
+
+        let conversationHistory = [
+            { role: "user", parts: [{ text: "You are a helpful AI assistant who formats responses in markdown." }] },
+            { role: "model", parts: [{ text: "Hello! How can I help you today?" }] },
+        ];
+        
+        window.onload = () => {
+             addMessageToUI('agent', 'Hello! How can I help you today? I can chat with you, send emails, or schedule meetings.');
+        };
+
+        sendButton.addEventListener('click', sendMessage);
+        chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
+
+        function streamResponse(element, text) {
+            let index = 0;
+            element.innerHTML = ""; // Clear the bubble
+            const interval = setInterval(() => {
+                if (index < text.length) {
+                    element.innerHTML += text.charAt(index);
+                    index++;
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                } else {
+                    clearInterval(interval);
+                    // Final render with markdown and add copy buttons
+                    element.innerHTML = marked.parse(text);
+                    addCopyButtons(element);
+                }
+            }, 20); // Adjust typing speed here (milliseconds)
+        }
+        
+        function addCopyButtons(parentElement) {
+            const codeBlocks = parentElement.querySelectorAll('pre');
+            codeBlocks.forEach(block => {
+                const button = document.createElement('button');
+                button.innerText = 'Copy';
+                button.className = 'copy-btn';
+                button.onclick = () => {
+                    const code = block.querySelector('code').innerText;
+                    navigator.clipboard.writeText(code);
+                    button.innerText = 'Copied!';
+                    setTimeout(() => { button.innerText = 'Copy'; }, 2000);
+                };
+                block.appendChild(button);
+            });
+        }
+
+        function addMessageToUI(sender, text) {
+            const messageContainer = document.createElement('div');
+            messageContainer.className = `flex mb-4 items-end slide-in-up ${sender === 'user' ? 'justify-end' : 'justify-start'}`;
+
+            if (text === 'loading') {
+                const bubbleDiv = document.createElement('div');
+                messageContainer.className = `flex mb-4 items-end justify-start`;
+                bubbleDiv.id = 'loading-indicator';
+                bubbleDiv.className = 'agent-bubble message-bubble py-3 px-4 rounded-lg';
+                bubbleDiv.innerHTML = `<div class="typing-indicator flex items-center space-x-1"><span class="h-2 w-2 bg-gray-400 rounded-full"></span><span class="h-2 w-2 bg-gray-400 rounded-full"></span><span class="h-2 w-2 bg-gray-400 rounded-full"></span></div>`;
+                messageContainer.appendChild(bubbleDiv);
+            } else if (sender === 'user') {
+                const bubbleDiv = document.createElement('div');
+                bubbleDiv.className = 'message-bubble py-3 px-4 rounded-xl user-bubble text-white';
+                bubbleDiv.textContent = text;
+                messageContainer.appendChild(bubbleDiv);
+            } else { // Agent message
+                const avatarDiv = document.createElement('div');
+                avatarDiv.className = 'w-8 h-8 rounded-full bg-gradient-to-tr from-purple-500 to-blue-500 flex-shrink-0 mr-3 shadow-md';
+                messageContainer.appendChild(avatarDiv);
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'flex flex-col';
+                const nameP = document.createElement('p');
+                nameP.className = 'text-xs mb-1 ml-1';
+                nameP.textContent = 'AI Agent';
+                nameP.style.color = 'var(--text-color-light)';
+                contentDiv.appendChild(nameP);
+
+                const bubbleDiv = document.createElement('div');
+                bubbleDiv.className = 'message-bubble py-3 px-4 rounded-xl agent-bubble markdown-content';
+                contentDiv.appendChild(bubbleDiv);
+                messageContainer.appendChild(contentDiv);
+
+                // This is the key change: stream the response into the bubble
+                streamResponse(bubbleDiv, text);
+            }
+            chatContainer.appendChild(messageContainer);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function sendMessage() {
+            const message = chatInput.value.trim();
+            if (message === '') return;
+            addMessageToUI('user', message);
+            conversationHistory.push({ role: "user", parts: [{ text: message }] });
+            chatInput.value = '';
+            chatInput.disabled = true;
+            sendButton.disabled = true;
+            if (checkForAutomation(message)) {
+                handleAutomationRequest(message);
+            } else {
+                handleChatRequest(conversationHistory);
+            }
+        }
+        
+        function checkForAutomation(message) {
+            const keywords = ['send email', 'schedule meeting', 'send a mail', 'book a meeting'];
+            return keywords.some(keyword => message.toLowerCase().includes(keyword));
+        }
+
+        function handleChatRequest(history) {
+            addMessageToUI('loading');
+            fetch('http://127.0.0.1:5000/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ history: history })
+            })
+            .then(response => response.json())
+            .then(data => {
+                const responseText = data.message || "Sorry, I had trouble thinking of a reply.";
+                document.getElementById('loading-indicator')?.parentElement.remove();
+                addMessageToUI('agent', responseText);
+                conversationHistory.push({ role: "model", parts: [{ text: responseText }] });
+            })
+            .catch(error => {
+                console.error('Error with chat request:', error);
+                const errorText = "I couldn't connect. Please make sure the backend server is running.";
+                document.getElementById('loading-indicator')?.parentElement.remove();
+                addMessageToUI('agent', errorText);
+            })
+            .finally(enableInput);
+        }
+
+        function handleAutomationRequest(message) {
+            addMessageToUI('loading');
+            
+            fetch('http://127.0.0.1:5000/api/automate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: message })
+            })
+            .then(response => response.json())
+            .then(data => {
+                const responseText = data.message || "Something went wrong with the automation.";
+                document.getElementById('loading-indicator')?.parentElement.remove();
+                addMessageToUI('agent', responseText);
+                conversationHistory.push({ role: "model", parts: [{ text: responseText }] });
+            })
+            .catch(error => {
+                console.error('Error with automation request:', error);
+                const errorText = "I couldn't connect. Please make sure the backend server is running.";
+                document.getElementById('loading-indicator')?.parentElement.remove();
+                addMessageToUI('agent', errorText);
+            })
+            .finally(enableInput);
+        }
+        
+        function enableInput() {
+            chatInput.disabled = false;
+            sendButton.disabled = false;
+            chatInput.focus();
+        }
+    </script>
+</body>
+</html>
+
