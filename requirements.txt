@@ -3,3 +3,5 @@ gunicorn
 google-generativeai
 grpcio
 python-dotenv
+flask-cors
+
