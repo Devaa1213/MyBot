@@ -1,7 +1,8 @@
 import os
 from dotenv import load_dotenv
 import google.generativeai as genai
-from flask import Flask, request, jsonify
+# Import 'send_from_directory'
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import json
 
@@ -12,9 +13,6 @@ load_dotenv()
 app = Flask(__name__)
 # Enable CORS to allow the frontend to communicate with this backend
 CORS(app)
-@app.route('/')
-def hello_world():
-    return 'Aiva is live!'
 
 # --- AI Configuration ---
 # The API key is now loaded from the .env file
@@ -36,19 +34,19 @@ except (KeyError, ValueError) as e:
     exit()
 
 
+# --- NEW: This is the "Face" for your bot ---
+@app.route('/')
+def serve_chat_page():
+    """
+    Serves the 'bot.html' file when someone visits the main URL.
+    """
+    # This tells Flask to find 'bot.html' in the same folder and send it.
+    return send_from_directory('.', 'bot.html')
+
+
 # --- NEW: Chat Endpoint ---
 @app.route('/api/chat', methods=['POST'])
-def chat():
-    """
-    Handles general chat conversations.
-    Receives the entire conversation history and returns a new AI response.
-    """
-    data = request.get_json()
-    if not data or 'history' not in data:
-        return jsonify({'error': 'No conversation history provided'}), 400
-
-    history = data['history']
-
+# ... (rest of your chat() function is perfect) ...
     try:
         # The chat-bison model is optimized for multi-turn conversations
         chat_session = model.start_chat(history=history)
@@ -87,7 +85,7 @@ def schedule_meeting(title, date, time, attendees):
 # --- Automation Endpoint ---
 @app.route('/api/automate', methods=['POST'])
 def automate_task():
-    """
+# ... (rest of your automate_task() function is perfect) ...
     This endpoint receives a natural language command, parses it using AI,
     and triggers the corresponding automation task.
     """
@@ -164,4 +162,3 @@ def automate_task():
 if __name__ == '__main__':
     # Render will provide its own port, so 5000 is just for local testing
     app.run(debug=True, port=int(os.environ.get('PORT', 5000)), host='0.0.0.0')
-
