@@ -12,6 +12,9 @@ load_dotenv()
 app = Flask(__name__)
 # Enable CORS to allow the frontend to communicate with this backend
 CORS(app)
+@app.route('/')
+def hello_world():
+    return 'Aiva is live!'
 
 # --- AI Configuration ---
 # The API key is now loaded from the .env file
@@ -161,3 +164,4 @@ def automate_task():
 if __name__ == '__main__':
     # Render will provide its own port, so 5000 is just for local testing
     app.run(debug=True, port=int(os.environ.get('PORT', 5000)), host='0.0.0.0')
+
