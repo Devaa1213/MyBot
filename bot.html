@@ -326,7 +326,7 @@
 
         function handleChatRequest(history) {
             addMessageToUI('loading');
-            fetch('http://127.0.0.1:5000/api/chat', {
+            fetch('http://salar-ai.onrender.com/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ history: history })
@@ -350,7 +350,7 @@
         function handleAutomationRequest(message) {
             addMessageToUI('loading');
             
-            fetch('http://127.0.0.1:5000/api/automate', {
+            fetch('http://salar-ai.onrender.com/api/automate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message: message })
@@ -379,4 +379,5 @@
     </script>
 </body>
 </html>
+
 
