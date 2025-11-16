@@ -1,0 +1,31 @@
+Python
+
+Ignore the virtual environment folder
+
+venv/
+.venv/
+
+Ignore Python cache files
+
+pycache/
+*.pyc
+*.pyo
+*.pyd
+
+Secret files
+
+Ignore all .env files, which contain API keys
+
+.env
+*.env
+
+IDE and OS files
+
+Ignore VS Code settings
+
+.vscode/
+
+Ignore Mac and Windows system files
+
+.DS_Store
+Thumbs.db

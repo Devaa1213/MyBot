@@ -1,0 +1,315 @@
+import os
+from dotenv import load_dotenv
+import google.generativeai as genai
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import smtplib
+import ssl
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+# Load environment variables
+load_dotenv()
+
+# --- Configuration ---
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD") # Use an App Password for services like Gmail
+
+# Configure the Generative AI model
+try:
+    genai.configure(api_key=GEMINI_API_KEY)
+    model = genai.GenerativeModel('gemini-pro')
+    chat = model.start_chat(history=[])
+except Exception as e:
+    print(f"Error configuring Generative AI: {e}")
+    model = None
+    chat = None
+
+# --- Flask App Initialization ---
+app = Flask(__name__)
+CORS(app)
+
+# --- Helper Functions ---
+
+def send_email(recipient, subject, body):
+    """
+    Sends an email using SMTP.
+    """
+    if not all([EMAIL_HOST_USER, EMAIL_HOST_PASSWORD]):
+        print("Email credentials are not set in the .env file.")
+        return False, "Server is not configured to send emails."
+
+    # Using Gmail's SMTP server as an example
+    smtp_server = "smtp.gmail.com"
+    port = 465  # For SSL
+
+    message = MIMEMultipart("alternative")
+    message["Subject"] = subject
+    message["From"] = EMAIL_HOST_USER
+    message["To"] = recipient
+    message.attach(MIMEText(body, "plain"))
+
+    # Create a secure SSL context
+    context = ssl.create_default_context()
+
+    try:
+        with smtplib.SMTP_SSL(smtp_server, port, context=context) as server:
+            server.login(EMAIL_HOST_USER, EMAIL_HOST_PASSWORD)
+            server.sendmail(EMAIL_HOST_USER, recipient, message.as_string())
+            print(f"Email sent successfully to {recipient}")
+            return True, f"Okay, I've sent an email to {recipient} with the subject '{subject}'."
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+        return False, "Sorry, I encountered an error and couldn't send the email."
+
+
+def get_gemini_response(prompt, history=None):
+    """
+    Gets a response from the Gemini model.
+    """
+    if not model:
+        return "The AI model is not configured. Please check the API key."
+    
+    try:
+        # For chat, we use the chat object to maintain context
+        if history:
+             # The history from the frontend is a list of dicts.
+             # We need to make sure our chat object is in sync.
+             # This is a simple sync; more complex logic might be needed for perfect context.
+            current_chat = model.start_chat(history=history)
+            response = current_chat.send_message(prompt)
+            return response.text
+        # For single-turn automation parsing
+        else:
+            response = model.generate_content(prompt)
+            return response.text
+    except Exception as e:
+        print(f"Error getting response from Gemini: {e}")
+        return "Sorry, I'm having trouble thinking right now."
+
+
+# --- API Endpoints ---
+
+@app.route('/api/chat', methods=['POST'])
+def chat_endpoint():
+    """
+    Handles conversational chat.
+    """
+    data = request.json
+    user_message = data.get('history', [])[-1]['parts'][0]['text'] # Get the latest user message
+    full_history = data.get('history', [])
+    
+    if not user_message:
+        return jsonify({'message': 'No message provided.'}), 400
+
+    response_text = get_gemini_response(user_message, full_history)
+    return jsonify({'message': response_text})
+
+
+@app.route('/api/automate', methods=['POST'])
+def automate_endpoint():
+    """
+    Handles automation requests like sending emails.
+    """
+    data = request.json
+    command = data.get('message')
+    if not command:
+        return jsonify({'message': 'No command provided.'}), 400
+
+    # Use the AI to parse the command into structured data
+    parsing_prompt = f"""
+    Parse the following command to extract details for sending an email.
+    The output should be a simple key-value format like:
+    recipient: example@email.com
+    subject: The Subject
+    body: The email body.
+    
+    Command: "{command}"
+    """
+    parsed_details_str = get_gemini_response(parsing_prompt)
+    
+    # Simple parsing of the model's output
+    details = {}
+    for line in parsed_details_str.split('\n'):
+        if ':' in line:
+            key, value = line.split(':', 1)
+            details[key.strip()] = value.strip()
+            
+    recipient = details.get('recipient')
+    subject = details.get('subject')
+    body = details.get('body')
+
+    if recipient and subject and body:
+        success, message = send_email(recipient, subject, body)
+        return jsonify({'message': message})
+    else:
+        print(f"Could not parse email details from command: '{command}'")
+        return jsonify({'message': "I'm sorry, I didn't understand the recipient, subject, and body for the email. Could you be more specific?"})
+
+
+# --- Main Execution ---
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)
+
+
+
+
+
+
+import os
+from dotenv import load_dotenv
+import google.generativeai as genai
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import json
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Initialize Flask App
+app = Flask(__name__)
+# Enable CORS to allow the frontend to communicate with this backend
+CORS(app)
+
+# --- AI Configuration ---
+# The API key is now loaded from the .env file
+try:
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise ValueError("GOOGLE_API_KEY not found in .env file or environment variables.")
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20')
+except (KeyError, ValueError) as e:
+    print("="*50)
+    print(f"ERROR: {e}")
+    print("Please create a .env file in the same directory as this script")
+    print("and add your API key like this: GOOGLE_API_KEY='your-api-key-here'")
+    print("="*50)
+    exit()
+
+
+# --- NEW: Chat Endpoint ---
+@app.route('/api/chat', methods=['POST'])
+def chat():
+    """
+    Handles general chat conversations.
+    Receives the entire conversation history and returns a new AI response.
+    """
+    data = request.get_json()
+    if not data or 'history' not in data:
+        return jsonify({'error': 'No conversation history provided'}), 400
+
+    history = data['history']
+
+    try:
+        # The chat-bison model is optimized for multi-turn conversations
+        chat_session = model.start_chat(history=history)
+        # Get the last user message from the history
+        last_user_message = history[-1]['parts'][0]['text']
+        
+        response = chat_session.send_message(last_user_message)
+        return jsonify({'status': 'success', 'message': response.text})
+
+    except Exception as e:
+        print(f"An error occurred during chat: {e}")
+        return jsonify({'error': 'Failed to get a response from the AI model.'}), 500
+
+
+# --- Automation Action Placeholders ---
+def send_email(recipient, subject, body):
+    """Placeholder function to send an email."""
+    print("--- SIMULATING EMAIL ---")
+    print(f"To: {recipient}")
+    print(f"Subject: {subject}")
+    print(f"Body: {body}")
+    print("-------------------------")
+    return f"Successfully sent an email to {recipient} with the subject '{subject}'."
+
+def schedule_meeting(title, date, time, attendees):
+    """Placeholder function to schedule a meeting."""
+    print("--- SIMULATING MEETING SCHEDULING ---")
+    print(f"Title: {title}")
+    print(f"Date: {date}")
+    print(f"Time: {time}")
+    print(f"Attendees: {', '.join(attendees)}")
+    print("-----------------------------------")
+    return f"Successfully scheduled a meeting '{title}' on {date} at {time}."
+
+
+# --- Automation Endpoint ---
+@app.route('/api/automate', methods=['POST'])
+def automate_task():
+    """
+    This endpoint receives a natural language command, parses it using AI,
+    and triggers the corresponding automation task.
+    """
+    data = request.get_json()
+    if not data or 'message' not in data:
+        return jsonify({'error': 'No message provided'}), 400
+
+    user_command = data['message']
+
+    system_instruction = """
+    You are an intelligent assistant that parses natural language commands into structured JSON.
+    Analyze the user's command and identify the intended action and its parameters.
+    The possible actions are 'send_email', 'schedule_meeting', or 'unknown'.
+
+    - For 'send_email', extract 'recipient', 'subject', and 'body'. The recipient should be a valid email address.
+    - For 'schedule_meeting', extract 'title', 'date', 'time', and 'attendees' (as a list of strings).
+
+    If the command is ambiguous, lacks necessary information, or doesn't match a known action, set the action to 'unknown' and provide a helpful 'error_message'.
+
+    Respond ONLY with a valid JSON object.
+
+    Example Command: "send an email to jane@example.com about the project update. The body should be 'Hi Jane, please see the attached report.'"
+    Example JSON:
+    {
+      "action": "send_email",
+      "parameters": {
+        "recipient": "jane@example.com",
+        "subject": "Project Update",
+        "body": "Hi Jane, please see the attached report."
+      }
+    }
+    """
+    
+    prompt = f"User Command: \"{user_command}\""
+
+    try:
+        response = model.generate_content(
+            [system_instruction, prompt],
+            generation_config=genai.types.GenerationConfig(
+                response_mime_type="application/json"
+            )
+        )
+        
+        task_data = json.loads(response.text)
+        action = task_data.get('action')
+        params = task_data.get('parameters', {})
+
+        if action == 'send_email':
+            if all(k in params for k in ['recipient', 'subject', 'body']):
+                result_message = send_email(params['recipient'], params['subject'], params['body'])
+                return jsonify({'status': 'success', 'message': result_message})
+            else:
+                 return jsonify({'status': 'error', 'message': "I'm missing some details. I need a recipient, subject, and body to send an email."})
+
+        elif action == 'schedule_meeting':
+            if all(k in params for k in ['title', 'date', 'time', 'attendees']):
+                result_message = schedule_meeting(params['title'], params['date'], params['time'], params['attendees'])
+                return jsonify({'status': 'success', 'message': result_message})
+            else:
+                return jsonify({'status': 'error', 'message': "I'm missing some details. To schedule a meeting I need a title, date, time, and at least one attendee."})
+        
+        else:
+            error_msg = task_data.get('error_message', "I'm sorry, I don't understand that command or I'm missing the necessary information to complete it.")
+            return jsonify({'status': 'error', 'message': error_msg})
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return jsonify({'error': 'Failed to process command with AI model.'}), 500
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)
+
